@@ -12,6 +12,8 @@ public interface ComposedChanged extends Changed {
   @NotNull
   DiffResult isCoreChanged();
 
+  void prune(DiffResult min);
+
   @Override
   default DiffResult isChanged() {
     DiffResult elementsResult =

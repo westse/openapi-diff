@@ -124,6 +124,9 @@ public class ChangedSchema implements ComposedChanged {
   }
 
   @Override
+  public void prune(DiffResult min) {}
+
+  @Override
   public DiffResult isCoreChanged() {
     if (this.coreChanged == null) {
       this.coreChanged = calculateCoreChanged();
