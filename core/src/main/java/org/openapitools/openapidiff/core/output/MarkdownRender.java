@@ -263,7 +263,7 @@ public class MarkdownRender implements Render {
         .forEach(
             (key, sub) ->
                 sb.append(format("%sAdded '%s' %s:\n", indent(deepness), key, discriminator))
-                    .append(schema(deepness, sub, schema.getContext())));
+                    .append(schema(deepness, sub)));
     schema
         .getChanged()
         .forEach(
@@ -308,49 +308,47 @@ public class MarkdownRender implements Render {
             deepness,
             "Added property",
             schema.getIncreasedProperties(),
-            true,
-            schema.getContext()));
+            true));
     sb.append(
         properties(
             deepness,
             "Deleted property",
             schema.getMissingProperties(),
-            false,
-            schema.getContext()));
+            false));
     schema
         .getChangedProperties()
         .forEach((name, property) -> sb.append(property(deepness, name, property)));
     return sb.toString();
   }
 
-  protected String schema(int deepness, ComposedSchema schema, DiffContext context) {
+  protected String schema(int deepness, ComposedSchema schema) {
     StringBuilder sb = new StringBuilder();
     if (schema.getAllOf() != null) {
       LOGGER.debug("All of schema");
       schema.getAllOf().stream()
           .map(this::resolve)
-          .forEach(composedChild -> sb.append(schema(deepness, composedChild, context)));
+          .forEach(composedChild -> sb.append(schema(deepness, composedChild)));
     }
     if (schema.getOneOf() != null) {
       LOGGER.debug("One of schema");
       sb.append(format("%sOne of:\n\n", indent(deepness)));
       schema.getOneOf().stream()
           .map(this::resolve)
-          .forEach(composedChild -> sb.append(schema(deepness + 1, composedChild, context)));
+          .forEach(composedChild -> sb.append(schema(deepness + 1, composedChild)));
     }
     return sb.toString();
   }
 
-  protected String schema(int deepness, Schema schema, DiffContext context) {
+  protected String schema(int deepness, Schema schema) {
     if (handledSchemas.contains(schema)) return "";
     handledSchemas.add(schema);
     StringBuilder sb = new StringBuilder();
     sb.append(listItem(deepness, "Enum", schema.getEnum()));
-    sb.append(properties(deepness, "Property", schema.getProperties(), true, context));
+    sb.append(properties(deepness, "Property", schema.getProperties(), true));
     if (schema instanceof ComposedSchema) {
-      sb.append(schema(deepness, (ComposedSchema) schema, context));
+      sb.append(schema(deepness, (ComposedSchema) schema));
     } else if (schema instanceof ArraySchema) {
-      sb.append(items(deepness, resolve(((ArraySchema) schema).getItems()), context));
+      sb.append(items(deepness, resolve(((ArraySchema) schema).getItems())));
     }
     return sb.toString();
   }
@@ -366,9 +364,9 @@ public class MarkdownRender implements Render {
     return sb.toString();
   }
 
-  protected String items(int deepness, Schema<?> schema, DiffContext context) {
+  protected String items(int deepness, Schema<?> schema) {
     return items(deepness, "Items", type(schema), schema.getDescription())
-        + schema(deepness, schema, context);
+        + schema(deepness, schema);
   }
 
   protected String items(int deepness, String title, String type, String description) {
@@ -381,15 +379,14 @@ public class MarkdownRender implements Render {
       final int deepness,
       String title,
       Map<String, Schema<?>> properties,
-      boolean showContent,
-      DiffContext context) {
+      boolean showContent) {
     StringBuilder sb = new StringBuilder();
     if (properties != null) {
       properties.forEach(
           (key, value) -> {
             sb.append(resolveProperty(deepness, value, key, title));
             if (showContent) {
-              sb.append(schema(deepness + 1, resolve(value), context));
+              sb.append(schema(deepness + 1, resolve(value)));
             }
           });
     }
