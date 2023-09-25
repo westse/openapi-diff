@@ -50,6 +50,9 @@ public class MarkdownRender implements Render {
   public void render(ChangedOpenApi diff, OutputStreamWriter outputStreamWriter) {
     this.diff = diff;
     this.handledSchemas.clear();
+    if (diff.isIncompatible()) {
+      safelyAppend(outputStreamWriter, "Incompatible: YES\n\n");
+    }
     listEndpoints("What's New", diff.getNewEndpoints(), outputStreamWriter);
     listEndpoints("What's Deleted", diff.getMissingEndpoints(), outputStreamWriter);
     listEndpoints("What's Deprecated", diff.getDeprecatedEndpoints(), outputStreamWriter);
@@ -100,21 +103,27 @@ public class MarkdownRender implements Render {
               outputStreamWriter,
               itemEndpoint(
                   operation.getHttpMethod().toString(),
-                  operation.getPathUrl(),
+                  operation.getPathUrl() + incompatible(operation),
                   operation.getSummary()));
           if (result(operation.getParameters()).isDifferent()) {
-            safelyAppend(outputStreamWriter, titleH5("Parameters:"));
+            safelyAppend(
+                outputStreamWriter,
+                titleH5(format("Parameters%s:", incompatible(operation.getParameters()))));
             safelyAppend(outputStreamWriter, parameters(operation.getParameters()));
           }
           if (operation.resultRequestBody().isDifferent()) {
-            safelyAppend(outputStreamWriter, titleH5("Request:"));
+            safelyAppend(
+                outputStreamWriter,
+                titleH5(format("Request%s:", incompatible(operation.getRequestBody()))));
             safelyAppend(
                 outputStreamWriter,
                 metadata("Description", operation.getRequestBody().getDescription()));
             safelyAppend(outputStreamWriter, bodyContent(operation.getRequestBody().getContent()));
           }
           if (operation.resultApiResponses().isDifferent()) {
-            safelyAppend(outputStreamWriter, titleH5("Return Type:"));
+            safelyAppend(
+                outputStreamWriter,
+                titleH5(format("Return Type%s:", incompatible(operation.getApiResponses()))));
             safelyAppend(outputStreamWriter, responses(operation.getApiResponses()));
           }
         });
@@ -146,7 +155,7 @@ public class MarkdownRender implements Render {
     StringBuilder sb = new StringBuilder();
     sb.append(
         this.itemResponse(
-            "Changed response",
+            "Changed response" + incompatible(response),
             code,
             null == response.getNewApiResponse()
                 ? ""
@@ -167,6 +176,14 @@ public class MarkdownRender implements Render {
     sb.append(format("%s : **%s %s**\n", title, code, status));
     sb.append(metadata(description));
     return sb.toString();
+  }
+
+  protected String incompatible(Changed changed) {
+    return incompatible(changed, " (incompatible)", "");
+  }
+
+  protected String incompatible(Changed changed, String ifIncompatible, String ifCompatible) {
+    return changed != null && changed.isIncompatible() ? ifIncompatible : ifCompatible;
   }
 
   protected String headers(ChangedHeaders headers) {
@@ -195,7 +212,7 @@ public class MarkdownRender implements Render {
 
   protected String itemHeader(String code, ChangedHeader header) {
     return this.itemHeader(
-        "Changed header",
+        "Changed header" + incompatible(header),
         code,
         null == header.getNewHeader() ? "" : header.getNewHeader().getDescription());
   }
@@ -244,7 +261,8 @@ public class MarkdownRender implements Render {
   }
 
   protected String itemContent(int deepness, String mediaType, ChangedMediaType content) {
-    return itemContent("Changed content type", mediaType) + schema(deepness, content.getSchema());
+    String title = "Changed content type" + incompatible(content);
+    return itemContent(title, mediaType) + schema(deepness, content.getSchema());
   }
 
   protected String schema(ChangedSchema schema) {
@@ -285,10 +303,21 @@ public class MarkdownRender implements Render {
 
   protected String schema(int deepness, ChangedSchema schema) {
     StringBuilder sb = new StringBuilder();
+    //    if (schema.isIncompatible()) {
+    //      sb.append(format("%sIncompatible: [", indent(deepness)));
+    //      sb.append(incompatible(schema.getOneOfSchema(), "OneOf,", ""));
+    //      sb.append(incompatible(schema.getRequired(), "Required,", ""));
+    //      sb.append(incompatible(schema.getItems(), "Items,", ""));
+    //      sb.append(incompatible(schema.getEnumeration(), "Enumeration,", ""));
+    //      sb.append("]\n");
+    //    }
     if (schema.isDiscriminatorPropertyChanged()) {
       LOGGER.debug("Discriminator property changed");
     }
     if (schema.getOneOfSchema() != null) {
+      if (schema.getOneOfSchema().isIncompatible()) {
+        sb.append(format("%sIncompatible: OneOfSchema\n", indent(deepness)));
+      }
       String discriminator =
           schema.getNewSchema().getDiscriminator() != null
               ? schema.getNewSchema().getDiscriminator().getPropertyName()
@@ -296,28 +325,30 @@ public class MarkdownRender implements Render {
       sb.append(oneOfSchema(deepness, schema.getOneOfSchema(), discriminator));
     }
     if (schema.getRequired() != null) {
+      if (schema.getRequired().isIncompatible()) {
+        sb.append(format("%sIncompatible: Required\n", indent(deepness)));
+      }
       sb.append(required(deepness, "New required properties", schema.getRequired().getIncreased()));
       sb.append(required(deepness, "New optional properties", schema.getRequired().getMissing()));
     }
     if (schema.getItems() != null) {
+      //      if (schema.getItems().isIncompatible()) {
+      //        sb.append(format("%sIncompatible: Items\n", indent(deepness)));
+      //      }
       sb.append(items(deepness, schema.getItems()));
     }
-    sb.append(listDiff(deepness, "enum", schema.getEnumeration()));
-    sb.append(
-        properties(
-            deepness,
-            "Added property",
-            schema.getIncreasedProperties(),
-            true));
-    sb.append(
-        properties(
-            deepness,
-            "Deleted property",
-            schema.getMissingProperties(),
-            false));
+    if (schema.getEnumeration() != null) {
+      if (schema.getEnumeration().isIncompatible()) {
+        sb.append(format("%sIncompatible: Enumeration\n", indent(deepness)));
+      }
+      sb.append(listDiff(deepness, "enum", schema.getEnumeration()));
+    }
+    sb.append(properties(deepness, "Added property", schema.getIncreasedProperties(), true));
+    sb.append(properties(deepness, "Deleted property", schema.getMissingProperties(), false));
     schema
         .getChangedProperties()
         .forEach((name, property) -> sb.append(property(deepness, name, property)));
+
     return sb.toString();
   }
 
@@ -359,7 +390,12 @@ public class MarkdownRender implements Render {
     if (schema.isChangedType()) {
       type = type(schema.getOldSchema()) + " -> " + type(schema.getNewSchema());
     }
-    sb.append(items(deepness, "Changed items", type, schema.getNewSchema().getDescription()));
+    sb.append(
+        items(
+            deepness,
+            "Changed items" + incompatible(schema),
+            type,
+            schema.getNewSchema().getDescription()));
     sb.append(schema(deepness, schema));
     return sb.toString();
   }
@@ -376,10 +412,7 @@ public class MarkdownRender implements Render {
   }
 
   protected String properties(
-      final int deepness,
-      String title,
-      Map<String, Schema<?>> properties,
-      boolean showContent) {
+      final int deepness, String title, Map<String, Schema<?>> properties, boolean showContent) {
     StringBuilder sb = new StringBuilder();
     if (properties != null) {
       properties.forEach(
@@ -408,7 +441,12 @@ public class MarkdownRender implements Render {
       type = type(schema.getOldSchema()) + " -> " + type(schema.getNewSchema());
     }
     sb.append(
-        property(deepness, "Changed property", name, type, schema.getNewSchema().getDescription()));
+        property(
+            deepness,
+            "Changed property" + incompatible(schema),
+            name,
+            type,
+            schema.getNewSchema().getDescription()));
     sb.append(schema(++deepness, schema));
     return sb.toString();
   }
@@ -458,11 +496,12 @@ public class MarkdownRender implements Render {
 
   protected String itemParameter(String title, Parameter parameter) {
     return this.itemParameter(
-        title, parameter.getName(), parameter.getIn(), parameter.getDescription());
+        title, null, parameter.getName(), parameter.getIn(), parameter.getDescription());
   }
 
-  protected String itemParameter(String title, String name, String in, String description) {
-    return format("%s: ", title)
+  protected String itemParameter(
+      String title, Changed c, String name, String in, String description) {
+    return format("%s%s: ", title, incompatible(c))
         + code(name)
         + " in "
         + code(in)
@@ -475,10 +514,14 @@ public class MarkdownRender implements Render {
     Parameter rightParam = param.getNewParameter();
     if (param.isDeprecated()) {
       return itemParameter(
-          "Deprecated", rightParam.getName(), rightParam.getIn(), rightParam.getDescription());
+          "Deprecated",
+          param,
+          rightParam.getName(),
+          rightParam.getIn(),
+          rightParam.getDescription());
     }
     return itemParameter(
-        "Changed", rightParam.getName(), rightParam.getIn(), rightParam.getDescription());
+        "Changed", param, rightParam.getName(), rightParam.getIn(), rightParam.getDescription());
   }
 
   protected String code(String string) {
