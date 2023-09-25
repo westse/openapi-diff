@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.v3.oas.models.PathItem;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.StringJoiner;
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.lang3.builder.EqualsBuilder;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
@@ -169,5 +170,19 @@ public class DiffContext {
         .append(leftUrl)
         .append(rightUrl)
         .toHashCode();
+  }
+
+  @Override
+  public String toString() {
+    return new StringJoiner(", ", DiffContext.class.getSimpleName() + "[", "]")
+        .add("request=" + request)
+        .add("response=" + response)
+        .add("required=" + required)
+        .add("method=" + method)
+        .add("url='" + url + "'")
+        .add("parameters=" + parameters)
+        .add("leftUrl='" + leftUrl + "'")
+        .add("rightUrl='" + rightUrl + "'")
+        .toString();
   }
 }
